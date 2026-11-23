@@ -3,7 +3,7 @@
 
 A tool to quickly bruteforce and enumerate valid Active Directory accounts through Kerberos Pre-Authentication
 
-Grab the latest binaries from the [releases page](https://github.com/ropnop/kerbrute/releases/latest) to get started.
+Grab the latest binaries from the [releases page](https://github.com/CSpanias/kerbrute/releases/latest) to get started.
 
 ## Background
 This tool grew out of some [bash scripts](https://github.com/ropnop/kerberos_windows_scripts) I wrote a few years ago to perform bruteforcing using the Heimdal Kerberos client from Linux. I wanted something that didn't require privileges to install a Kerberos client, and when I found the amazing pure Go implementation of Kerberos [gokrb5](https://github.com/jcmturner/gokrb5), I decided to finally learn Go and write this. 
@@ -23,7 +23,9 @@ A domain (`-d`) or a domain controller (`--dc`) must be specified. If a Domain C
 
 By default, Kerbrute is multithreaded and uses 10 threads. This can be changed with the `-t` option.
 
-Output is logged to stdout, but a log file can be specified with `-o`.
+Output is logged to stdout. For `userenum`, `-o` writes a sorted, lowercase,
+deduplicated list of valid usernames without domain suffixes. For the other
+commands, `-o` writes the log to a file.
 
 By default, failures are not logged, but that can be changed with `-v`.
 
@@ -64,7 +66,7 @@ Flags:
       --downgrade          Force downgraded encryption type (arcfour-hmac-md5)
       --hash-file string   File to save AS-REP hashes to (if any captured), otherwise just logged
   -h, --help               help for kerbrute
-  -o, --output string      File to write logs to. Optional.
+  -o, --output string      Output file (userenum: unique usernames; other commands: logs)
       --safe               Safe mode. Will abort if any user comes back as locked out. Default: FALSE
   -t, --threads int        Threads to use (default 10)
   -v, --verbose            Log failures and errors
@@ -74,6 +76,10 @@ Use "kerbrute [command] --help" for more information about a command.
 
 ### User Enumeration
 To enumerate usernames, Kerbrute sends TGT requests with no pre-authentication. If the KDC responds with a `PRINCIPAL UNKNOWN` error, the username does not exist. However, if the KDC prompts for pre-authentication, we know the username exists and we move on. This does not cause any login failures so it will not lock out any accounts. This generates a Windows event ID [4768](https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventID=4768) if Kerberos logging is enabled.
+
+Use `-o kerb-users.txt` to save the unique usernames directly; no log parsing
+is needed. The list is written when enumeration completes successfully. An
+existing output file is overwritten.
 
 ```
 root@kali:~# ./kerbrute_linux_amd64 userenum -d lab.ropnop.com usernames.txt

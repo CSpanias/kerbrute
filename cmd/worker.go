@@ -41,17 +41,17 @@ func makeBruteWorker(ctx context.Context, passwords <-chan string, wg *sync.Wait
 	}
 }
 
-func makeEnumWorker(ctx context.Context, usernames <-chan string, wg *sync.WaitGroup) {
+func makeEnumWorker(ctx context.Context, usernames <-chan string, wg *sync.WaitGroup, results *enumResults, probe func(string) (bool, error)) {
 	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
-			break
+			return
 		case username, ok := <-usernames:
 			if !ok {
 				return
 			}
-			testUsername(ctx, username)
+			testUsername(username, results, probe)
 		}
 	}
 }
@@ -96,11 +96,14 @@ func testLogin(ctx context.Context, username string, password string) {
 	}
 }
 
-func testUsername(ctx context.Context, username string) {
+func testUsername(username string, results *enumResults, probe func(string) (bool, error)) {
 	atomic.AddInt32(&counter, 1)
 	usernamefull := fmt.Sprintf("%v@%v", username, domain)
-	valid, err := kSession.TestUsername(username)
+	valid, err := probe(username)
 	if valid {
+		if !results.add(username) {
+			return
+		}
 		atomic.AddInt32(&successes, 1)
 		if err != nil {
 			logger.Log.Noticef("[+] VALID USERNAME WITH ERROR:\t %s\t (%s)", username, err)
