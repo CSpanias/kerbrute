@@ -38,8 +38,8 @@ linux: ## Make Linux x86 and x64 Binaries
 	done; \
 	echo "Done."
 
-mac: ## Make Darwin (Mac) x86 and x64 Binaries
-	@for ARCH in ${ARCHS}; do \
+mac: ## Make a Darwin (Mac) x64 Binary
+	@for ARCH in amd64; do \
 		echo "Building for mac $${ARCH}..." ; \
 		GOOS=darwin GOARCH=$${ARCH} go build -a -ldflags ${LDFLAGS} -o ${TARGET}/kerbrute_darwin_$${ARCH} || exit 1 ;\
 	done; \
@@ -50,7 +50,7 @@ clean: ## Delete any binaries
 	go clean -i -n github.com/ropnop/kerbrute ; \
 	echo "Done."
 
-all: ## Make Windows, Linux and Mac x86/x64 Binaries
+all: ## Make Windows, Linux and Mac binaries
 all: clean windows linux mac
 
 

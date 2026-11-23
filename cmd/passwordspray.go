@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -27,7 +28,7 @@ Succesful logins will be displayed on stdout.
 WARNING: use with caution - failed Kerberos pre-auth can cause account lockouts`,
 	Args:   cobra.MinimumNArgs(1),
 	PreRun: setupSession,
-	Run:    passwordSpray,
+	RunE:   passwordSpray,
 }
 
 func init() {
@@ -36,12 +37,11 @@ func init() {
 
 }
 
-func passwordSpray(cmd *cobra.Command, args []string) {
+func passwordSpray(cmd *cobra.Command, args []string) error {
 	usernamelist := args[0]
 	if !userAsPass {
 		if len(args) != 2 {
-			logger.Log.Error("You must specify a password to spray with, or --user-as-pass")
-			os.Exit(1)
+			return fmt.Errorf("you must specify a password to spray with, or --user-as-pass")
 		} else {
 			password = args[1]
 		}
@@ -60,36 +60,47 @@ func passwordSpray(cmd *cobra.Command, args []string) {
 	if usernamelist != "-" {
 		file, err := os.Open(usernamelist)
 		if err != nil {
-			logger.Log.Error(err.Error())
-			return
+			return fmt.Errorf("open username list: %w", err)
 		}
 		defer file.Close()
 		scanner = bufio.NewScanner(file)
 	} else {
 		scanner = bufio.NewScanner(os.Stdin)
 	}
-	
 
 	for i := 0; i < threads; i++ {
-		go makeSprayWorker(ctx, usersChan, &wg, password, userAsPass)
+		go makeSprayWorker(ctx, usersChan, &wg, password, userAsPass, testLogin)
 	}
 
 	start := time.Now()
+	lines := scanLines(ctx, scanner)
+	var readErr error
 
 Scan:
-	for scanner.Scan() {
+	for {
 		select {
 		case <-ctx.Done():
 			break Scan
-		default:
-			usernameline := scanner.Text()
+		case line, ok := <-lines:
+			if !ok {
+				break Scan
+			}
+			if line.err != nil {
+				readErr = fmt.Errorf("read username list: %w", line.err)
+				cancel()
+				break Scan
+			}
+			usernameline := line.line
 			username, err := util.FormatUsername(usernameline)
 			if err != nil {
 				logger.Log.Debugf("[!] %q - %v", usernameline, err.Error())
 				continue
 			}
-			time.Sleep(time.Duration(delay) * time.Millisecond)
-			usersChan <- username
+			select {
+			case usersChan <- username:
+			case <-ctx.Done():
+				break Scan
+			}
 		}
 	}
 	close(usersChan)
@@ -97,9 +108,15 @@ Scan:
 
 	finalCount := atomic.LoadInt32(&counter)
 	finalSuccess := atomic.LoadInt32(&successes)
-	logger.Log.Infof("Done! Tested %d logins (%d successes) in %.3f seconds", finalCount, finalSuccess, time.Since(start).Seconds())
-
-	if err := scanner.Err(); err != nil {
-		logger.Log.Error(err.Error())
+	if readErr != nil {
+		return readErr
 	}
+	if err := currentFailure(); err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("password spray stopped before completion")
+	}
+	logger.Log.Infof("Done! Tested %d logins (%d successes) in %.3f seconds", finalCount, finalSuccess, time.Since(start).Seconds())
+	return nil
 }

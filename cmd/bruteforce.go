@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -21,14 +22,14 @@ A full domain is required. This domain will be capitalized and used as the Kerbe
 WARNING: failed guesses will count against the lockout threshold`,
 	Args:   cobra.ExactArgs(1),
 	PreRun: setupSession,
-	Run:    bruteForceCombos,
+	RunE:   bruteForceCombos,
 }
 
 func init() {
 	rootCmd.AddCommand(bruteForceCmd)
 }
 
-func bruteForceCombos(cmd *cobra.Command, args []string) {
+func bruteForceCombos(cmd *cobra.Command, args []string) error {
 	combolist := args[0]
 	stopOnSuccess = false
 
@@ -42,8 +43,7 @@ func bruteForceCombos(cmd *cobra.Command, args []string) {
 	if combolist != "-" {
 		file, err := os.Open(combolist)
 		if err != nil {
-			logger.Log.Error(err.Error())
-			return
+			return fmt.Errorf("open combination list: %w", err)
 		}
 		defer file.Close()
 		scanner = bufio.NewScanner(file)
@@ -52,18 +52,28 @@ func bruteForceCombos(cmd *cobra.Command, args []string) {
 	}
 
 	for i := 0; i < threads; i++ {
-		go makeBruteComboWorker(ctx, combosChan, &wg)
+		go makeBruteComboWorker(ctx, combosChan, &wg, testLogin)
 	}
 
 	start := time.Now()
+	lines := scanLines(ctx, scanner)
+	var readErr error
 
 Scan:
-	for scanner.Scan() {
+	for {
 		select {
 		case <-ctx.Done():
 			break Scan
-		default:
-			comboline := scanner.Text()
+		case line, ok := <-lines:
+			if !ok {
+				break Scan
+			}
+			if line.err != nil {
+				readErr = fmt.Errorf("read combination list: %w", line.err)
+				cancel()
+				break Scan
+			}
+			comboline := line.line
 			if comboline == "" {
 				continue
 			}
@@ -72,8 +82,11 @@ Scan:
 				logger.Log.Debug("[!] Skipping: %q - %v", comboline, err.Error())
 				continue
 			}
-			time.Sleep(time.Duration(delay) * time.Millisecond)
-			combosChan <- [2]string{username, password}
+			select {
+			case combosChan <- [2]string{username, password}:
+			case <-ctx.Done():
+				break Scan
+			}
 		}
 	}
 	close(combosChan)
@@ -81,9 +94,15 @@ Scan:
 
 	finalCount := atomic.LoadInt32(&counter)
 	finalSuccess := atomic.LoadInt32(&successes)
-	logger.Log.Infof("Done! Tested %d logins (%d successes) in %.3f seconds", finalCount, finalSuccess, time.Since(start).Seconds())
-
-	if err := scanner.Err(); err != nil {
-		logger.Log.Error(err.Error())
+	if readErr != nil {
+		return readErr
 	}
+	if err := currentFailure(); err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("password testing stopped before completion")
+	}
+	logger.Log.Infof("Done! Tested %d logins (%d successes) in %.3f seconds", finalCount, finalSuccess, time.Since(start).Seconds())
+	return nil
 }

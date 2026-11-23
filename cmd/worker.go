@@ -8,36 +8,42 @@ import (
 	"sync/atomic"
 )
 
-func makeSprayWorker(ctx context.Context, usernames <-chan string, wg *sync.WaitGroup, password string, userAsPass bool) {
+func makeSprayWorker(ctx context.Context, usernames <-chan string, wg *sync.WaitGroup, password string, userAsPass bool, login func(context.Context, string, string)) {
 	defer wg.Done()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-ctx.Done():
-			break
+			return
 		case username, ok := <-usernames:
-			if !ok {
+			if !ok || !waitForDelay(ctx, delay) {
 				return
 			}
 			if userAsPass {
-				testLogin(ctx, username, username)
+				login(ctx, username, username)
 			} else {
-				testLogin(ctx, username, password)
+				login(ctx, username, password)
 			}
 		}
 	}
 }
 
-func makeBruteWorker(ctx context.Context, passwords <-chan string, wg *sync.WaitGroup, username string) {
+func makeBruteWorker(ctx context.Context, passwords <-chan string, wg *sync.WaitGroup, username string, login func(context.Context, string, string)) {
 	defer wg.Done()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-ctx.Done():
-			break
+			return
 		case password, ok := <-passwords:
-			if !ok {
+			if !ok || !waitForDelay(ctx, delay) {
 				return
 			}
-			testLogin(ctx, username, password)
+			login(ctx, username, password)
 		}
 	}
 }
@@ -45,11 +51,14 @@ func makeBruteWorker(ctx context.Context, passwords <-chan string, wg *sync.Wait
 func makeEnumWorker(ctx context.Context, usernames <-chan string, wg *sync.WaitGroup, results *enumResults, probe func(string) (bool, error)) {
 	defer wg.Done()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case username, ok := <-usernames:
-			if !ok {
+			if !ok || !waitForDelay(ctx, delay) {
 				return
 			}
 			testUsername(username, results, probe)
@@ -57,17 +66,20 @@ func makeEnumWorker(ctx context.Context, usernames <-chan string, wg *sync.WaitG
 	}
 }
 
-func makeBruteComboWorker(ctx context.Context, combos <-chan [2]string, wg *sync.WaitGroup) {
+func makeBruteComboWorker(ctx context.Context, combos <-chan [2]string, wg *sync.WaitGroup, login func(context.Context, string, string)) {
 	defer wg.Done()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-ctx.Done():
-			break
+			return
 		case combo, ok := <-combos:
-			if !ok {
+			if !ok || !waitForDelay(ctx, delay) {
 				return
 			}
-			testLogin(ctx, combo[0], combo[1])
+			login(ctx, combo[0], combo[1])
 		}
 	}
 }
@@ -90,7 +102,7 @@ func testLogin(ctx context.Context, username string, password string) {
 		ok, errorString := kSession.HandleKerbError(err)
 		if !ok {
 			logger.Log.Errorf("[!] %v - %v", login, errorString)
-			cancel()
+			failRun(cancel, fmt.Errorf("%s", errorString))
 		} else {
 			logger.Log.Debugf("[!] %v - %v", login, errorString)
 		}
@@ -98,7 +110,7 @@ func testLogin(ctx context.Context, username string, password string) {
 }
 
 func testUsername(username string, results *enumResults, probe func(string) (bool, error)) {
-	atomic.AddInt32(&counter, 1)
+	defer atomic.AddInt32(&counter, 1)
 	usernamefull := fmt.Sprintf("%v@%v", username, domain)
 	valid, err := probe(username)
 	if valid {
@@ -117,7 +129,7 @@ func testUsername(username string, results *enumResults, probe func(string) (boo
 		ok, errorString := kSession.HandleKerbError(err)
 		if !ok {
 			logger.Log.Errorf("[!] %v - %v", usernamefull, errorString)
-			cancel()
+			failRun(cancel, fmt.Errorf("%s", errorString))
 		} else {
 			logger.Log.Debugf("[!] %v - %v", usernamefull, errorString)
 		}

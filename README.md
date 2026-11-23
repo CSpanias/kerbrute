@@ -27,6 +27,9 @@ Kerbrute has three main commands:
 A domain (`-d`) or a domain controller (`--dc`) must be specified. If a Domain Controller is not given the KDC will be looked up via DNS.
 
 By default, Kerbrute is multithreaded and uses 10 threads. This can be changed with the `-t` option.
+Setting `--delay` uses one worker and waits the specified number of
+milliseconds before each attempt. In-flight requests cannot be recalled when
+an interruption or safe-mode abort occurs.
 
 Output is logged to stdout. For `userenum`, `-o` writes a sorted, lowercase,
 deduplicated list of valid usernames without domain suffixes. For the other
@@ -85,7 +88,23 @@ To enumerate usernames, Kerbrute sends TGT requests with no pre-authentication. 
 
 Use `-o kerb-users.txt` to save the unique usernames directly; no log parsing
 is needed. The list is written when enumeration completes successfully. An
-existing output file is overwritten.
+existing output file is overwritten. Duplicate candidates are checked
+case-insensitively before sending a request, using a temporary on-disk store.
+This store contains usernames and is removed on normal shutdown, but may
+remain in the system temporary directory after an uncatchable termination.
+Ensure that directory has enough space and appropriate access restrictions.
+
+On interruption or a fatal enumeration error, completed results are saved to
+`kerb-users.txt.partial` instead, the existing complete output is left
+untouched, and the command exits unsuccessfully. A forced termination cannot
+save partial results. Without `-o`, completed results remain in the console
+output only.
+
+When standard error is a terminal, progress is displayed there periodically.
+For regular files the percentage and estimated time are based on completed or
+skipped input lines, including invalid and duplicate lines, rather than only
+network requests. For standard input or other streams, the total is unknown and
+only completed requests, valid usernames and the request rate are shown.
 
 ```
 root@kali:~# ./kerbrute_linux_amd64 userenum -d lab.ropnop.com usernames.txt
@@ -177,15 +196,17 @@ $ go install github.com/ropnop/kerbrute@latest
 ```
 
 With the repository cloned, you can also use the Make file to compile for common architectures:
+Building requires Go 1.25 or later. Release archives must include the licences
+for the dependencies used in that build, including bbolt.
 
 ```
 $ make help
 help:            Show this help.
 windows:  Make Windows x86 and x64 Binaries
 linux:  Make Linux x86 and x64 Binaries
-mac:  Make Darwin (Mac) x86 and x64 Binaries
+mac:  Make a Darwin (Mac) x64 Binary
 clean:  Delete any binaries
-all:  Make Windows, Linux and Mac x86/x64 Binaries
+all:  Make Windows, Linux and Mac binaries
 
 $ make all
 Done.
@@ -196,11 +217,10 @@ Building for linux amd64...
 Building for linux 386...
 Done.
 Building for mac amd64...
-Building for mac 386...
 Done.
 
 $ ls dist/
-kerbrute_darwin_386        kerbrute_linux_386         kerbrute_windows_386.exe
+                           kerbrute_linux_386         kerbrute_windows_386.exe
 kerbrute_darwin_amd64      kerbrute_linux_amd64       kerbrute_windows_amd64.exe
 ```
 
