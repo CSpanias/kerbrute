@@ -1,9 +1,14 @@
 # Kerbrute
 [![CircleCI](https://circleci.com/gh/ropnop/kerbrute.svg?style=svg)](https://circleci.com/gh/ropnop/kerbrute)
 
+This fork was modified by CSpanias on 23 November 2026 and is maintained by
+CSpanias. Kerbrute was originally created by Ronnie Flathers.
+
 A tool to quickly bruteforce and enumerate valid Active Directory accounts through Kerberos Pre-Authentication
 
 Grab the latest binaries from the [releases page](https://github.com/CSpanias/kerbrute/releases/latest) to get started.
+The Linux release archive includes the project licence and third-party licence
+notices alongside the executable.
 
 ## Background
 This tool grew out of some [bash scripts](https://github.com/ropnop/kerberos_windows_scripts) I wrote a few years ago to perform bruteforcing using the Heimdal Kerberos client from Linux. I wanted something that didn't require privileges to install a Kerberos client, and when I found the amazing pure Go implementation of Kerberos [gokrb5](https://github.com/jcmturner/gokrb5), I decided to finally learn Go and write this. 
@@ -43,6 +48,7 @@ $ ./kerbrute -h
 /_/|_|\___/_/  /_.___/_/   \__,_/\__/\___/
 
 Version: dev (bc1d606) - 11/15/20 - Ronnie Flathers @ropnop
+Fork maintained by CSpanias
 
 This tool is designed to assist in quickly bruteforcing valid Active Directory accounts through Kerberos Pre-Authentication.
 It is designed to be used on an internal Windows domain with access to one of the Domain Controllers.
