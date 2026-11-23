@@ -197,7 +197,8 @@ $ go install github.com/ropnop/kerbrute@latest
 
 With the repository cloned, you can also use the Make file to compile for common architectures:
 Building requires Go 1.25 or later. Release archives must include the licences
-for the dependencies used in that build, including bbolt.
+for the dependencies used in that build, including bbolt. Release publishing is
+manual; CI builds tagged commits but does not publish or replace releases.
 
 ```
 $ make help

@@ -9,21 +9,6 @@ jobs:
       - run: VERSION=${CIRCLE_TAG} make all
       - store_artifacts:
           path: ./dist
-      - persist_to_workspace:
-          root: dist
-          paths:
-            - ./*
-
-  github-release:
-    docker:
-      - image: cibuilds/github:0.10
-    steps:
-      - attach_workspace:
-          at: ./artifacts
-      - run:
-          name: "Publish Binaries on Github"
-          command: |
-            ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete ${CIRCLE_TAG} ./artifacts/
 
 workflows:
   version: 2
@@ -33,13 +18,3 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - github-release:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v\d+\.\d+\.\d+$/
-          context: "Github Token"
-          requires:
-            - build
-          
